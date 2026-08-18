@@ -250,15 +250,17 @@ async fn fetch_and_cache(
 }
 
 async fn forward(state: &AppState, request: Request<Body>, id: Uuid, cache: &str) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
     match send_backend(state, request).await {
         Ok(response) => {
             let status = response.status().as_u16();
-            debug!(%id, cache, backend_status = status, "request complete");
+            debug!(%id, %method, %path, cache, backend_status = status, "request complete");
             backend_response(response, false).await
         }
         Err(error) => {
             error!(%error, "backend request failed");
-            debug!(%id, cache, outcome = "backend-error", "request complete");
+            debug!(%id, %method, %path, cache, outcome = "backend-error", "request complete");
             StatusCode::BAD_GATEWAY.into_response()
         }
     }
