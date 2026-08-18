@@ -27,7 +27,7 @@ use axum::{
     Router,
     body::{Body, to_bytes},
     extract::State,
-    http::{HeaderName, HeaderValue, Method, Request, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, header},
     response::Response,
 };
 use clap::Parser;
@@ -272,14 +272,51 @@ async fn send_backend(state: &AppState, request: Request<Body>) -> Result<reqwes
     let base = backend.path().trim_end_matches('/');
     backend.set_path(&format!("{}{}", base, uri.path()));
     backend.set_query(uri.query());
-    let mut builder = state.client.request(request.method().clone(), backend);
-    for (name, value) in request.headers() {
+    let method = request.method().clone();
+    let headers = request.headers().clone();
+    let body = to_bytes(request.into_body(), usize::MAX).await?.to_vec();
+    let response = send_backend_request(&state.client, &method, &backend, &headers, &body).await?;
+
+    if let Some(target) = directory_redirect_target(&backend, &response) {
+        debug!(from = %backend, to = %target, "following backend directory redirect");
+        return send_backend_request(&state.client, &method, &target, &headers, &body).await;
+    }
+    Ok(response)
+}
+
+async fn send_backend_request(
+    client: &Client,
+    method: &Method,
+    url: &Url,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<reqwest::Response> {
+    let mut builder = client.request(method.clone(), url.clone());
+    for (name, value) in headers {
         if !SKIP_HEADERS.contains(&name.as_str()) {
             builder = builder.header(name, value);
         }
     }
-    let body = to_bytes(request.into_body(), usize::MAX).await?;
-    Ok(builder.body(body).send().await?)
+    Ok(builder.body(body.to_vec()).send().await?)
+}
+
+fn directory_redirect_target(current: &Url, response: &reqwest::Response) -> Option<Url> {
+    if !matches!(response.status().as_u16(), 301 | 302 | 307 | 308) || current.path().ends_with('/')
+    {
+        return None;
+    }
+    let location = response.headers().get(header::LOCATION)?.to_str().ok()?;
+    let target = current.join(location).ok()?;
+    let expected_path = format!("{}/", current.path());
+    if target.scheme() == current.scheme()
+        && target.host_str() == current.host_str()
+        && target.port() == current.port()
+        && target.path() == expected_path
+    {
+        Some(target)
+    } else {
+        None
+    }
 }
 
 async fn backend_response(response: reqwest::Response, _cached: bool) -> Response {
