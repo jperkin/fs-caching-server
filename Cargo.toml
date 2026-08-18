@@ -1,0 +1,25 @@
+[package]
+name = "fs-caching-server"
+version = "1.0.0"
+edition = "2024"
+description = "A small HTTP caching proxy backed by the local filesystem"
+license = "ISC"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+http = "1"
+mime_guess = "2"
+httpdate = "1"
+percent-encoding = "2"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "rustls-tls", "stream"] }
+tokio = { version = "1", features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
